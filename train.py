@@ -1,72 +1,123 @@
-import tensorflow as tf
-import os 
-from tensorflow.examples.tutorials.mnist import input_data
-mnist = input_data.read_data_sets("/tmp/data/", one_hot = True)
+import numpy as np 
+import os
+import cv2
+import tensorflow as tf 
+import tflearn 
+import matplotlib.pyplot as plt
+from random import shuffle
+from tqdm import tqdm
+from tflearn.layers.conv import conv_2d, max_pool_2d
+from tflearn.layers.core import input_data, dropout, fully_connected
+from tflearn.layers.estimator import regression
+from tensorflow.python.framework import ops
 
-n_classes = 10
-batch_size = 128
-#After image is down sampled, 32x32 = 1024
-x = tf.placeholder('float', [None, 784])
-y = tf.placeholder('float')
-keep_rate = 0.8
-keep_prob = tf.placeholder(tf.float32)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
-def conv_neural_network_model(x):
-                #5x5 convolution, 1 input, and 32 outputs
-    weights = {'weights_conv1':tf.Variable(tf.random_normal([5,5,1,32])),
-                #5x5 convolution, 32 inputs, 64 outputs
-               'weights_conv2':tf.Variable(tf.random_normal([5,5,32,64])),
-                #1024 nodes
-               'weights_fully_connected':tf.Variable(tf.random_normal([7*7*64, 1024])),
-               'output':tf.Variable(tf.random_normal([1024, n_classes]))}
 
-    biases = {'biases_conv1':tf.Variable(tf.random_normal([32])),
-              'biases_conv2':tf.Variable(tf.random_normal([64])),
-              'biases_fully_connected':tf.Variable(tf.random_normal([1024])),
-              'output':tf.Variable(tf.random_normal([n_classes]))}
+TRAINING_DIR = 'data/training_circles'
+TESTING_DIR = 'data/testing_circles'
+IMAGE_SIZE = 50
+LR = 0.001
+MODEL_NAME = 'Image-Classifier'
 
-    #reshape image to 32 x32 
-    x =tf.reshape(x, shape=[-1, 28, 28,1])
+def create_label(image_name):
+    word_label = image_name.split('.')[-2] #One hot encoder
+    if word_label == 'circle':
+        return np.array([1, 0])
+    # elif word_label == 'line':
+    #     return np.array([0, 1])
 
-    # First conv layer then pooling
-    conv1 = tf.nn.conv2d(x, weights['weights_conv1'], strides=[1,1,1,1], padding='SAME')
-    conv1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+# getting images and resizing
+def create_training_data():
+    training_data = []
+    for img in tqdm(os.listdir(TRAINING_DIR)):
+        path = os.path.join(TRAINING_DIR, img)
+        img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        img_data = cv2.resize(img_data, (IMAGE_SIZE, IMAGE_SIZE))
+        training_data.append([np.array(img_data), create_label(img)])
+    shuffle(training_data)
+    np.save('training_data.npy', training_data)
+    return training_data
 
-    # second conv layer + pooling
-    conv2 = tf.nn.conv2d(conv1, weights['weights_conv2'], strides=[1,1,1,1], padding='SAME')
-    conv2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')  
+def create_testing_data():
+    testing_data = []
+    for img in tqdm(os.listdir(TESTING_DIR)):
+        path = os.path.join(TESTING_DIR, img)
+        img_num = img.split('.')[0]
+        img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        img_data = cv2.resize(img_data, (IMAGE_SIZE, IMAGE_SIZE))
+        testing_data.append([np.array(img_data), img_num])
+    shuffle(training_data)
+    np.save('testing_data.npy', testing_data)
+    return training_data 
 
-    #Fully connected layer
-    fc = tf.reshape(conv2, [-1, 7*7*64])
-    fc = tf.nn.relu(tf.matmul(fc, weights['weights_fully_connected']) + biases['biases_fully_connected'])
+training_data = create_training_data()
+testing_data = create_testing_data()
 
-    #reduce overfitting
-    fc = tf.nn.dropout(fc, keep_rate)
-    #Matrix multiplication 
-    output= tf.matmul(fc, weights['output']) + biases['output']
-    return output
+train = training_data[:-200]
+test = training_data[-100:]
 
-#
-#Train the neural net with 10 epochs
-#
-def train_neural_network(x):
-    prediction = conv_neural_network_model(x)
-    cost = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y) )
-    optimizer = tf.train.AdamOptimizer().minimize(cost)
-    
-    hm_epochs = 10
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
+X_train = np.array([i[0] for i in train]).reshape(-1, IMAGE_SIZE,IMAGE_SIZE, 1 )
+Y_train = [i[1] for i in train ]
 
-        for epoch in range(hm_epochs):
-            epoch_loss = 0
-            for _ in range(int(mnist.train.num_examples/batch_size)):
-                epoch_x, epoch_y = mnist.train.next_batch(batch_size)
-                _, c = sess.run([optimizer, cost], feed_dict={x: epoch_x, y: epoch_y})
-                epoch_loss += c
-            print('Epoch', epoch, 'completed out of',hm_epochs,'loss:',epoch_loss)
-        correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
-        accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
-        print('Accuracy:',accuracy.eval({x:mnist.test.images, y:mnist.test.labels}))
+X_test = np.array([i[0] for i in test]).reshape(-1, IMAGE_SIZE,IMAGE_SIZE, 1 )
+Y_test = [i[1] for i in test ]
 
-train_neural_network(x)
+
+ops.reset_default_graph()
+
+# BUILD MODEL
+convnet = input_data(shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name='input')
+
+convnet = conv_2d(convnet, 32, 5, activation='relu')
+convnet = max_pool_2d(convnet, 5)
+
+convnet = conv_2d(convnet, 64, 5, activation='relu')
+convnet = max_pool_2d(convnet, 5)
+
+# convnet = conv_2d(convnet, 128, 5, activation='relu')
+# convnet = max_pool_2d(convnet, 5)
+
+# convnet = conv_2d(convnet, 64, 5, activation='relu')
+# convnet = max_pool_2d(convnet, 5)
+
+convnet = conv_2d(convnet, 32, 5, activation='relu')
+convnet = max_pool_2d(convnet, 5)
+
+convnet = fully_connected(convnet, 256, activation='relu')
+convnet = dropout(convnet, 0.8)
+
+
+convnet = fully_connected(convnet, 2, activation='softmax')
+convnet = regression(convnet, optimizer = 'adam', learning_rate = LR,
+                 loss = 'categorical_crossentropy', name = 'target')
+
+model = tflearn.DNN(convnet, tensorboard_dir="log", tensorboard_verbose=0)
+model.fit({'input' : X_train}, {'target' : Y_train},
+          n_epoch=10,
+          validation_set=({'input' : X_test}, {'target' : Y_test}),
+          snapshot_step=100, show_metric=True, run_id = MODEL_NAME)
+
+fig = plg.figure(figsize=(16, 12))
+
+
+for num, data in enumerate(testing_data[:16]):
+    img_num = data[1]
+    img_data = data[0]
+
+    y = fig.add_subplot(4, 4, num+1)
+    orig = img_data
+    data = img_data.reshape=(IMAGE_SIZE, IMAGE_SIZE, 1)
+    model_out = model.predict([data])[0]
+
+    if np.argmax(model_out) > .5:
+        str_label = 'circle'
+    else:
+        str_label = 'line'
+
+    y.imshow(orig, cmap='gray')
+    plt.title(str_label)
+    y.axes.get_xaxis().set_variable(False)
+    y.axes.get_yaxis().set_variable(False)
+
+plt.show()
