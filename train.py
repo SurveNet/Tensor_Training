@@ -11,8 +11,8 @@ from tflearn.layers.core import input_data, dropout, fully_connected
 from tflearn.layers.estimator import regression
 from tensorflow.python.framework import ops
 
+# supress warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
-
 
 TRAINING_DIR = 'data/training_circles'
 TESTING_DIR = 'data/testing_circles'
@@ -24,8 +24,8 @@ def create_label(image_name):
     word_label = image_name.split('.')[-2] #One hot encoder
     if word_label == 'circle':
         return np.array([1, 0])
-    # elif word_label == 'line':
-    #     return np.array([0, 1])
+    elif word_label == 'line':
+        return np.array([0, 1])
 
 # getting images and resizing
 def create_training_data():
@@ -54,6 +54,10 @@ def create_testing_data():
 training_data = create_training_data()
 testing_data = create_testing_data()
 
+# training_data = np.load('training_data.npy')
+# testing_data = np.load('training_data.npy')
+
+
 train = training_data[:-200]
 test = training_data[-100:]
 
@@ -67,26 +71,25 @@ Y_test = [i[1] for i in test ]
 ops.reset_default_graph()
 
 # BUILD MODEL
-convnet = input_data(shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name='input')
+convnet = input_data(shape=[None, 32, 32, 3], name='input')
 
-convnet = conv_2d(convnet, 32, 5, activation='relu')
-convnet = max_pool_2d(convnet, 5)
+convnet = conv_2d(convnet, 32, 2, activation='relu')
+convnet = max_pool_2d(convnet, 2)
 
-convnet = conv_2d(convnet, 64, 5, activation='relu')
-convnet = max_pool_2d(convnet, 5)
+convnet = conv_2d(convnet, 64, 2, activation='relu')
+convnet = max_pool_2d(convnet, 2)
 
-# convnet = conv_2d(convnet, 128, 5, activation='relu')
-# convnet = max_pool_2d(convnet, 5)
+# convnet = conv_2d(convnet, 128, 2, activation='relu')
+# convnet = max_pool_2d(convnet, 2)
 
-# convnet = conv_2d(convnet, 64, 5, activation='relu')
-# convnet = max_pool_2d(convnet, 5)
+# convnet = conv_2d(convnet, 64, 2, activation='relu')
+# convnet = max_pool_2d(convnet, 2)
 
-convnet = conv_2d(convnet, 32, 5, activation='relu')
-convnet = max_pool_2d(convnet, 5)
+# convnet = conv_2d(convnet, 32, 2, activation='relu')
+# convnet = max_pool_2d(convnet, 2)
 
-convnet = fully_connected(convnet, 256, activation='relu')
+convnet = fully_connected(convnet, 1024, activation='relu')
 convnet = dropout(convnet, 0.8)
-
 
 convnet = fully_connected(convnet, 2, activation='softmax')
 convnet = regression(convnet, optimizer = 'adam', learning_rate = LR,
@@ -96,10 +99,9 @@ model = tflearn.DNN(convnet, tensorboard_dir="log", tensorboard_verbose=0)
 model.fit({'input' : X_train}, {'target' : Y_train},
           n_epoch=10,
           validation_set=({'input' : X_test}, {'target' : Y_test}),
-          snapshot_step=100, show_metric=True, run_id = MODEL_NAME)
+          snapshot_step=200, show_metric=True, run_id = MODEL_NAME)
 
 fig = plg.figure(figsize=(16, 12))
-
 
 for num, data in enumerate(testing_data[:16]):
     img_num = data[1]
