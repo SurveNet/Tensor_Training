@@ -1,125 +1,114 @@
-import numpy as np 
-import os
-import cv2
-import tensorflow as tf 
-import tflearn 
-import matplotlib.pyplot as plt
-from random import shuffle
-from tqdm import tqdm
-from tflearn.layers.conv import conv_2d, max_pool_2d
-from tflearn.layers.core import input_data, dropout, fully_connected
-from tflearn.layers.estimator import regression
-from tensorflow.python.framework import ops
+# Convolutional Neural Network
 
-# supress warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+# Written by: Aaron Ward
 
-TRAINING_DIR = 'data/training_circles'
-TESTING_DIR = 'data/testing_circles'
-IMAGE_SIZE = 50
-LR = 0.001
-MODEL_NAME = 'Image-Classifier'
+# Importing the Keras libraries and packages
+from keras.models import Sequential
+from keras.layers.convolutional import Conv2D
+from keras.layers import MaxPooling2D
+from keras.layers import Flatten
+from keras.layers import Dense 
+from keras.models import load_model
 
-def create_label(image_name):
-    word_label = image_name.split('.')[-2] #One hot encoder
-    if word_label == 'circle':
-        return np.array([1, 0])
-    elif word_label == 'line':
-        return np.array([0, 1])
+#Initialise the CNN
+classifier = Sequential() 
 
-# getting images and resizing
-def create_training_data():
-    training_data = []
-    for img in tqdm(os.listdir(TRAINING_DIR)):
-        path = os.path.join(TRAINING_DIR, img)
-        img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        img_data = cv2.resize(img_data, (IMAGE_SIZE, IMAGE_SIZE))
-        training_data.append([np.array(img_data), create_label(img)])
-    shuffle(training_data)
-    np.save('training_data.npy', training_data)
-    return training_data
+# 1 - Build the convolution
 
-def create_testing_data():
-    testing_data = []
-    for img in tqdm(os.listdir(TESTING_DIR)):
-        path = os.path.join(TESTING_DIR, img)
-        img_num = img.split('.')[0]
-        img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        img_data = cv2.resize(img_data, (IMAGE_SIZE, IMAGE_SIZE))
-        testing_data.append([np.array(img_data), img_num])
-    shuffle(training_data)
-    np.save('testing_data.npy', testing_data)
-    return training_data 
+# 32 filters or a 3x3 grid
+classifier.add(Conv2D(32, 3, 3, input_shape = (64,64,3), activation = 'relu'))
 
-training_data = create_training_data()
-testing_data = create_testing_data()
+# 2 - Pooling
+classifier.add(MaxPooling2D(pool_size = (2,2)))
 
-# training_data = np.load('training_data.npy')
-# testing_data = np.load('training_data.npy')
+#Second layer
+classifier.add(Conv2D(32, 3, 3, activation = 'relu'))
+classifier.add(MaxPooling2D(pool_size = (2,2)))
+
+# 3 - Flattening 
+classifier.add(Flatten())
+
+# 4 - Full Connection, making an ANN
+
+classifier.add(Dense(output_dim = 128, activation = 'relu'))
+
+#Binary outcome so sigmoid is being used
+classifier.add(Dense(output_dim = 1, activation = 'sigmoid'))
+
+## Compiling the NN
+
+classifier.compile(optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
+
+# Fitting the neural network for the images
+from keras.preprocessing.image import ImageDataGenerator
 
 
-train = training_data[:-200]
-test = training_data[-100:]
+#Augment the images to improve accuracy
+train_datagen = ImageDataGenerator(
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
 
-X_train = np.array([i[0] for i in train]).reshape(-1, IMAGE_SIZE,IMAGE_SIZE, 1 )
-Y_train = [i[1] for i in train ]
+test_datagen = ImageDataGenerator(rescale=1./255)
 
-X_test = np.array([i[0] for i in test]).reshape(-1, IMAGE_SIZE,IMAGE_SIZE, 1 )
-Y_test = [i[1] for i in test ]
+training_set = train_datagen.flow_from_directory(
+                  '/input/training_set',
+                  target_size=(64, 64),
+                  batch_size=32,
+                  class_mode='binary')
 
 
-ops.reset_default_graph()
+test_set = test_datagen.flow_from_directory(
+        '/input/test_set',
+        target_size=(64, 64),
+        batch_size=32,
+        class_mode='binary')
 
-# BUILD MODEL
-convnet = input_data(shape=[None, 32, 32, 3], name='input')
 
-convnet = conv_2d(convnet, 32, 2, activation='relu')
-convnet = max_pool_2d(convnet, 2)
+###### EXECUTE THIS TO TRAIN MODEL ##############
+classifier.fit_generator( training_set,
+                   steps_per_epoch=8000,
+                   epochs=25,
+                   validation_data=test_set,
+                   validation_steps=2000)
 
-convnet = conv_2d(convnet, 64, 2, activation='relu')
-convnet = max_pool_2d(convnet, 2)
+classifier.save_weights("/output/out.h5")
+print("-----SAVED OUTPUT-----------")
 
-# convnet = conv_2d(convnet, 128, 2, activation='relu')
-# convnet = max_pool_2d(convnet, 2)
 
-# convnet = conv_2d(convnet, 64, 2, activation='relu')
-# convnet = max_pool_2d(convnet, 2)
+print('-------LOADED MODEL----------')
+from keras.models import load_model
 
-# convnet = conv_2d(convnet, 32, 2, activation='relu')
-# convnet = max_pool_2d(convnet, 2)
+import h5py
 
-convnet = fully_connected(convnet, 1024, activation='relu')
-convnet = dropout(convnet, 0.8)
+classifier.load("trained_data/out.h5")
+classifier.load_weights("trained_data/out.h5", by_name=True)
+loaded_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+score = loaded_model.evaluate(X, Y, verbose=0)
+print("Loaded model from disk")
+print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
 
-convnet = fully_connected(convnet, 2, activation='softmax')
-convnet = regression(convnet, optimizer = 'adam', learning_rate = LR,
-                 loss = 'categorical_crossentropy', name = 'target')
+#--------- New Prediction -------------
 
-model = tflearn.DNN(convnet, tensorboard_dir="log", tensorboard_verbose=0)
-model.fit({'input' : X_train}, {'target' : Y_train},
-          n_epoch=10,
-          validation_set=({'input' : X_test}, {'target' : Y_test}),
-          snapshot_step=200, show_metric=True, run_id = MODEL_NAME)
+# ==============================================================================
+import numpy as np
+from keras.preprocessing import image
 
-fig = plg.figure(figsize=(16, 12))
+# #Load the image
+test_image = image.load_img('input/single_prediction/smile1.jpg',target_size=(64, 64))
+#Change to a 3 Dimensional array because it is a colour image
+test_image = image.img_to_array(test_image)
+# #add a forth dimension
+test_image = np.expand_dims(test_image, axis = 0)
+result = classifier.predict(test_image)
+training_set.class_indices
 
-for num, data in enumerate(testing_data[:16]):
-    img_num = data[1]
-    img_data = data[0]
-
-    y = fig.add_subplot(4, 4, num+1)
-    orig = img_data
-    data = img_data.reshape=(IMAGE_SIZE, IMAGE_SIZE, 1)
-    model_out = model.predict([data])[0]
-
-    if np.argmax(model_out) > .5:
-        str_label = 'circle'
-    else:
-        str_label = 'line'
-
-    y.imshow(orig, cmap='gray')
-    plt.title(str_label)
-    y.axes.get_xaxis().set_variable(False)
-    y.axes.get_yaxis().set_variable(False)
-
-plt.show()
+# #treshold of 50% to classify the image
+if result[0][0] > 0.5:
+    prediction = 'Happy'
+else:
+    prediction = 'Sad'
+        
+print(result[0][0], "% certainty of being a", prediction)
+#==============================================================================

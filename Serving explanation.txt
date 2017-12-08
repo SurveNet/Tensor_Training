@@ -1,8 +1,0 @@
-Servable: holds the model or multiple models/ multiple versions of a model
-Loader: loads or unloads a servable into the manager
-source: servable goes into a source. and creates only one instance of a loader.
-
-
-//STEPS
-put a servable in a source -> source creates a loader -> loaders are sent to a manager and serves them for client requests.
-
