@@ -1,7 +1,16 @@
+
+'''
 # Convolutional Neural Network
 
-# Written by: Aaron Ward
+This model trains a CNN using to conv2D layers, 2 MaxPool layers
+and 2 fully connected layers.
+Uses image folder names as labels
+and trains for 25 epochs
 
+Model is saved to a h5 file and can be loaded for later use in test.py
+
+@Author: Aaron Ward
+'''
 # Importing the Keras libraries and packages
 from keras.models import Sequential
 from keras.layers.convolutional import Conv2D
@@ -36,12 +45,11 @@ classifier.add(Dense(output_dim = 128, activation = 'relu'))
 classifier.add(Dense(output_dim = 1, activation = 'sigmoid'))
 
 ## Compiling the NN
-
 classifier.compile(optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
+
 
 # Fitting the neural network for the images
 from keras.preprocessing.image import ImageDataGenerator
-
 
 #Augment the images to improve accuracy
 train_datagen = ImageDataGenerator(
@@ -58,7 +66,6 @@ training_set = train_datagen.flow_from_directory(
                   batch_size=32,
                   class_mode='binary')
 
-
 test_set = test_datagen.flow_from_directory(
         '/input/test_set',
         target_size=(64, 64),
@@ -74,41 +81,6 @@ classifier.fit_generator( training_set,
                    validation_steps=2000)
 
 classifier.save_weights("/output/out.h5")
+classifier.save("/output/saved_model.h5")
 print("-----SAVED OUTPUT-----------")
 
-
-print('-------LOADED MODEL----------')
-from keras.models import load_model
-
-import h5py
-
-classifier.load("trained_data/out.h5")
-classifier.load_weights("trained_data/out.h5", by_name=True)
-loaded_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-score = loaded_model.evaluate(X, Y, verbose=0)
-print("Loaded model from disk")
-print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
-
-#--------- New Prediction -------------
-
-# ==============================================================================
-import numpy as np
-from keras.preprocessing import image
-
-# #Load the image
-test_image = image.load_img('input/single_prediction/smile1.jpg',target_size=(64, 64))
-#Change to a 3 Dimensional array because it is a colour image
-test_image = image.img_to_array(test_image)
-# #add a forth dimension
-test_image = np.expand_dims(test_image, axis = 0)
-result = classifier.predict(test_image)
-training_set.class_indices
-
-# #treshold of 50% to classify the image
-if result[0][0] > 0.5:
-    prediction = 'Happy'
-else:
-    prediction = 'Sad'
-        
-print(result[0][0], "% certainty of being a", prediction)
-#==============================================================================
